@@ -65,8 +65,65 @@ function solve_economic_dispatch(system::PowerSystem)
 
     generators_count = length(system.generators)
 
-    # Define variables based on generator type
-    @variable(
+    # Check if all generators have the same cost function type
+    cost_types = unique([gen.cost_curve_type for gen in system.generators])
+    if length(cost_types) > 1
+        error("Mixed cost function types found. Economic dispatch must be solved separately for each type.")
+    end
+
+    # Define decision variables based on cost type
+    if cost_types[1] == "piecewise"
+
+        # Create segment-wise decision variables
+        @variable(model, g_segment[i=1:generators_count, j=1:(length(system.generators[i].cost_curve) - 1)], 
+            lower_bound=0, 
+            upper_bound=(system.generators[i].cost_curve[j+1].power - system.generators[i].cost_curve[j].power))
+
+        # Power balance constraint
+        @constraint(model, 
+            sum(system.generators[i].cost_curve[1].power for i in 1:generators_count) + 
+            sum(sum(g_segment[i, j] for j in 1:(length(system.generators[i].cost_curve) - 1)) for i in 1:generators_count) 
+            == system.demand
+        )
+
+        # Define cost function
+        cost_expr = @expression(model, 0)
+        for i in 1:generators_count
+            cost_expr += system.generators[i].cost_curve[1].cost  # Fixed cost at min power
+            for j in 1:(length(system.generators[i].cost_curve) - 1)
+                slope = (system.generators[i].cost_curve[j+1].cost - system.generators[i].cost_curve[j].cost) /
+                        (system.generators[i].cost_curve[j+1].power - system.generators[i].cost_curve[j].power)
+                cost_expr += slope * g_segment[i, j]
+            end
+        end
+    elseif cost_types[1] == "polynomial"
+        # Solve using polynomial cost functions
+        @variable(
+            model, 
+            g[i=1:generators_count], 
+            lower_bound = (system.generators[i] isa ThermalGenerator ? system.generators[i].min : 0),
+            upper_bound = system.generators[i].max
+        )
+
+        # Power balance constraint
+        @constraint(model, sum(g[i] for i in 1:generators_count) == system.demand)
+
+        # Define cost function
+        cost_expr = @expression(model, 0)
+        for i in 1:generators_count
+            gen = system.generators[i]
+            for (p, coeff) in enumerate(gen.variable_cost_coeffs)
+                cost_expr += coeff * g[i]^(p-1)  # Polynomial cost: sum(c * P^p)
+            end
+        end
+    else
+        error("Unsupported cost function type detected.")
+    end
+
+
+    @objective(model, Min, cost_expr)
+
+#=     @variable(
         model, 
         g[i=1:generators_count], 
         lower_bound = (system.generators[i] isa ThermalGenerator ? system.generators[i].min : 0),
@@ -77,16 +134,36 @@ function solve_economic_dispatch(system::PowerSystem)
     @objective(
         model,
         Min,
-        sum(system.generators[i].variable_cost * g[i] for i in 1:generators_count),
+        sum(
+            sum(coeff * g[i]^(p-1) for (p, coeff) in enumerate(system.generators[i].variable_cost_coeffs) if coeff != 0)
+            for i in 1:generators_count
+        ),
     )
     # Define the power balance constraint
-    @constraint(model, sum(g[i] for i in 1:generators_count) == system.demand)
+    @constraint(model, sum(g[i] for i in 1:generators_count) == system.demand) =#
     # Solve statement
     optimize!(model)
     assert_is_solved_and_feasible(model)
+
+    # Retrieve optimal dispatch
+    optimal_dispatch = Dict()
+
+    if cost_types[1] == "piecewise"
+        for i in 1:generators_count
+            optimal_dispatch[i] = value(system.generators[i].cost_curve[1].power)
+            for j in 1:(length(system.generators[i].cost_curve) - 1)
+                optimal_dispatch[i] += value(g_segment[i, j])
+            end
+        end
+    elseif cost_types[1] == "polynomial"
+        for i in 1:generators_count
+            optimal_dispatch[i] = value(g[i])
+        end
+    end
+
     # return the optimal value of the objective function and its minimizers
     return (
-        g = value.(g),
+        g = optimal_dispatch,
         total_cost = objective_value(model),
     )
 

@@ -10,6 +10,7 @@ mutable struct ThermalGenerator <: Generator
     fuel::String
     min::Float64
     max::Float64
+    bus::Bus  # Associate generator with a bus
     cost_curve_type::String  # Type of cost function ("piecewise" or "polynomial")
     variable_cost_coeffs::Vector{Float64}  # Polynomial cost coefficients
     cost_curve::Vector{CostSegment}  # Piecewise linear cost
@@ -20,11 +21,17 @@ mutable struct ThermalGenerator <: Generator
         fuel_type::String, 
         min::Union{Nothing, Float64}=nothing, 
         max::Union{Nothing, Float64}=nothing;
+        bus::Union{Nothing, Bus} = nothing,
         cost_curve::Union{Nothing, Vector{CostSegment}}=nothing,
         cost_coeffs::Union{Nothing, Vector{Float64}}=nothing)
 
         if isnothing(cost_coeffs) && isnothing(cost_curve)
             error("At least one cost function (piecewise or polynomial) must be provided")
+        end
+
+        # Assign a default bus if not provided
+        if isnothing(bus)
+            bus = Bus(1, "Bus1", 1.0, 500.0)
         end
 
        # If cost_curve is provided, use its power values to define min and max
@@ -38,7 +45,12 @@ mutable struct ThermalGenerator <: Generator
             cost_curve = Vector{CostSegment}()  # Ensure cost_curve is an empty vector
         end
 
-        return new(name, fuel_type, min, max, cost_curve_type, cost_coeffs, cost_curve)  
+        # Ensure min/max are properly assigned
+        if isnothing(min) || isnothing(max)
+            error("Min and max values must be specified explicitly or derived from the cost function")
+        end
+
+        return new(name, fuel_type, min, max, bus, cost_curve_type, cost_coeffs, cost_curve)  
     end
 end
 

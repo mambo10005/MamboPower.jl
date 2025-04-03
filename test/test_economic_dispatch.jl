@@ -5,7 +5,7 @@
     gen3 = MamboPower.ThermalGenerator("Gen3", "Oil", 50.0, 200.0, cost_coeffs = [78, 7.97, 0.00482])
 
     # Create power system
-    ps = MamboPower.PowerSystem([gen1, gen2, gen3], 850.0)
+    ps = MamboPower.PowerSystem([gen1, gen2, gen3], nothing, 850.0)
 
     # Solve economic dispatch
     economic_dispatch_solution = MamboPower.solve_economic_dispatch(ps)
@@ -47,7 +47,7 @@ end
     gen3 = MamboPower.ThermalGenerator("Gen3", "Gas", cost_curve=gen3_cost_curve)
 
     # Define power system with a total demand of 900 MW
-    ps = MamboPower.PowerSystem([gen1, gen2, gen3], 900.0)
+    ps = MamboPower.PowerSystem([gen1, gen2, gen3], nothing, 900.0)
 
     # Solve economic dispatch problem
     economic_dispatch_solution = MamboPower.solve_economic_dispatch(ps)

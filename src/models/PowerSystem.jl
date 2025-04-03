@@ -2,16 +2,23 @@ using HiGHS
 using JuMP
 
 struct PowerSystem
-    generators::Vector{Generator}
+    generators::Vector{<:Generator}  # Accept any subtype of Generator
+    buses::Vector{Bus}
     demand::Float64
 end
 
-function PowerSystem(generators::Vector{Generator})
-    return PowerSystem(generators, 0.0)
+# Constructor allowing custom generators and optional buses
+function PowerSystem(generators::Vector{<:Generator}, buses::Union{Nothing, Vector{Bus}}=nothing, demand::Float64=0.0)
+    if buses === nothing
+        println("No buses provided. Assigning default bus.")
+        buses = Bus[]  # Ensure it's an empty vector of `Bus`
+    end
+    return PowerSystem(generators, buses, demand)
 end
 
+# Default constructor for an empty system
 function PowerSystem()
-    return PowerSystem([], 0.0)
+    return PowerSystem(ThermalGenerator[], Bus[], 0.0)
 end
 
 function get_generators(ps::PowerSystem)
